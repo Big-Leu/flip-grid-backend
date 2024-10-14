@@ -109,93 +109,117 @@ class ImageProcessor(BaseService):
         }
         return response
 
-    def preprocess_image(self):
-        # Read the image
-        img = cv2.imread(self.image_path)
+    def load_image(self):
+        self.image = cv2.imread(self.image_path)
+        if self.image is None:
+            raise FileNotFoundError(f"Image not found at path: {self.image_path}")
+        return self.image
 
+    @staticmethod
+    def preprocess_image_for_ocr(image):
         # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Denoise
+        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        
+        # Increase contrast using CLAHE
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        contrast = clahe.apply(denoised)
+        
+        # Threshold
+        _, binary = cv2.threshold(contrast, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Dilation and erosion
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        morph = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        
+        return morph
 
-        # Apply Gaussian Blur to remove noise
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        # Apply adaptive thresholding to get binary image (to enhance text visibility)
-        thresh = cv2.adaptiveThreshold(
-            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
-        )
-
-        # Use morphological operations to remove small noise
-        kernel = np.ones((3, 3), np.uint8)
-        processed_img = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-
-        return processed_img
-
-    def extract_text(self):
-        self.text = pytesseract.image_to_string(self.image_path)
+    def extract_text(self, preprocessed_image):
+        # Use multiple page segmentation modes and OCR engine modes
+        configs = [
+            '--psm 6',  # Assume a single uniform block of text
+            '--psm 3',  # Fully automatic page segmentation, but no OSD
+            '--psm 4',  # Assume a single column of text of variable sizes
+        ]
+        
+        texts = []
+        for config in configs:
+            text = pytesseract.image_to_string(preprocessed_image, config=config)
+            texts.append(text)
+        
+        # Choose the text with the most content
+        self.text = max(texts, key=len)
         return self.text
 
     @staticmethod
-    def extract_price_simple(text):
+    def extract_price(text):
         # Split text into lines
         lines = text.split("\n")
 
         for line in lines:
             if "MRP" in line or "M.R.P" in line:
-                # Now extract the price using a simple regex
                 match = re.search(r"([\d,]+(?:\.\d{1,2})?)", line)
                 if match:
                     return match.group(1).replace(",", "")  # Return the matched price
         return None  # Return None if no price found
 
     @staticmethod
-    def extract_date(text):
-        # Regex pattern to find dates in the format "MAR-2027"
-        pattern = r"\b([A-Z]{3}-\d{4})\b"  # Match three uppercase letters followed by a dash and four digits
-        matches = re.findall(pattern, text)
-        return matches
+    def extract_dates(text):
+        patterns = [
+            r'\b((?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-\d{4})\b',
+            r'\b(\d{2}/\d{2}/\d{4})\b',
+            r'\b(\d{2}-\d{2}-\d{4})\b',
+        ]
+        dates = []
+        for pattern in patterns:
+            dates.extend(re.findall(pattern, text, re.IGNORECASE))
+        return dates
 
     @staticmethod
     def compare_dates(dates):
-        # Convert date strings to datetime objects for comparison
-        date_objects = [datetime.strptime(date, "%b-%Y") for date in dates]
-
-        if len(date_objects) != 2:
+        if not dates:
             return None, None
-
-        # Compare dates
-        mfg_date = min(date_objects).strftime("%b-%Y")
-        exp_date = max(date_objects).strftime("%b-%Y")
-
-        return mfg_date, exp_date
+        date_objects = []
+        for date in dates:
+            try:
+                date_obj = datetime.strptime(date, "%b-%Y")
+            except ValueError:
+                try:
+                    date_obj = datetime.strptime(date, "%d/%m/%Y")
+                except ValueError:
+                    try:
+                        date_obj = datetime.strptime(date, "%d-%m-%Y")
+                    except ValueError:
+                        continue
+            date_objects.append(date_obj)
+        if not date_objects:
+            return None, None
+        return (min(date_objects).strftime("%b-%Y"), max(date_objects).strftime("%b-%Y"))
 
     @staticmethod
     def find_brand_in_text(text, brand_list):
-        # Loop through each brand name in the list
+        text_words = set(word.lower() for word in re.findall(r'\b\w+\b', text))
+        best_match = None
+        highest_ratio = 0
         for brand in brand_list:
-            # Split the brand name into words
-            brand_words = brand.split()
-            # Check if any word from the brand is present in the text
-            for word in brand_words:
-                # Use regex to find the word in the text (case insensitive)
-                if re.search(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE):
-                    return brand  # Return the matched brand if any word is found
-        return "Brand not found"  # Return this if no brand is found
+            brand_words = set(word.lower() for word in brand.split())
+            ratio = len(brand_words.intersection(text_words)) / len(brand_words)
+            if ratio > highest_ratio:
+                highest_ratio = ratio
+                best_match = brand
+        return best_match if highest_ratio > 0.5 else "Brand not found"
 
     def process_image(self):
-        # Preprocess image
-        self.preprocess_image()
+        original_image = self.load_image()
+        preprocessed_image = self.preprocess_image_for_ocr(original_image)
+        text = self.extract_text(preprocessed_image)
 
-        # Extract text from the image
-        text = self.extract_text()
-
-        # Extract price (MRP) from the text
-        mrp = self.extract_price_simple(text)
-
-        # Extract dates from the text
-        dates = self.extract_date(text)
+        mrp = self.extract_price(text)
+        dates = self.extract_dates(text)
         mfg_date, exp_date = self.compare_dates(dates)
 
-        # List of brand names
         brands = [
             "WH Protective Oil", "Colgate", "LetsShave", "Nivea", "Garnier", "Dettol", "Vaseline",
             "Himalaya", "Dabur", "Gillette", "Johnson & Johnson", "L'Oréal", "Parachute", "Pepsodent",
@@ -205,15 +229,14 @@ class ImageProcessor(BaseService):
             "Axe", "Yardley", "Nirma", "Surf Excel", "Ariel", "Tide", "Rin", "Vim", "Medimix", "WH Protective Oil"
         ]
 
-        # Find the brand in the text
         brand = self.find_brand_in_text(text, brands)
 
-        # Construct the response
         response = {
             "name": brand,
             "expiry_date": exp_date,
+            "manufacturing_date": mfg_date,
             "mrp": mrp,
-            "description": "something"
+            "description": text[:500] if len(text) > 500 else text  # Truncate long descriptions
         }
 
         return response

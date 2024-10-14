@@ -1,12 +1,19 @@
 import uuid
+from fastapi import Depends
 from fastapi import WebSocket
-from backend.commons.responses import ServiceResponseStatus
+from backend.commons.responses import ServiceResponse, ServiceResponseStatus
+from backend.db.models.product import Product
 from backend.logging import get_logger
+from backend.schemas.product import ProductSchema
+from backend.services.base.crud import FormService
 from backend.services.commons.base import BaseService
 import cv2
 import numpy as np
 from PIL import Image
 import os
+from backend.db.dependencies import get_db_session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 import tensorflow as tf
 import keras as ks
 from keras.api.applications import MobileNetV2
@@ -55,7 +62,7 @@ class LiveFeed(BaseService):
             return is_centered and is_large_enough and confidence > threshold
         return False
 
-    def process_video(self, video_path):
+    async def process_video(self, video_path ,db):
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             print(f"Error: Could not open video file {video_path}")
@@ -99,6 +106,15 @@ class LiveFeed(BaseService):
             print(f"Saved image: {image_filename} with confidence: {highest_confidence:.2f}")
             MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', save_directory+image_filename).process_image()
             MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', save_directory+image_filename).predict_image()
+            obj = ProductSchema(
+                name=MLOCR["name"],
+                expiry_date=MLOCR["expiry_date"],
+                manufacturing_date=MLOCR.get("manufacturing_date"),  # Use .get() in case the key is missing
+                mrp=MLOCR["mrp"],
+                description=MLFRESH.get("Predicted Class")
+            )
+            service = FormService(db)
+            await service.createProductListing(obj)
             return self.response(ServiceResponseStatus.FETCHED,
                                  result=[MLOCR,MLFRESH]
             )
@@ -137,8 +153,8 @@ class LiveFeed(BaseService):
         except Exception as e:
             print(f"File handling error: {e}")
  
-    def process_somethings(self, video_path:str):
-        self.process_video(video_path)
+    async def process_somethings(self, video_path:str):
+         await self.process_video(video_path)
 
     async def broadcast(self, message: str):
         for connection in self.active_connections:

@@ -145,3 +145,5 @@ cython_debug/
 #config files
 config.yml
 /backend/db/migrations
+/backend/services/video
+/backend/services/ml/freshnessmodel.h5
