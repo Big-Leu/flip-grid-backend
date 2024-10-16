@@ -71,7 +71,7 @@ class LiveFeed(BaseService):
         service = FormService(db)
         await service.createProductListing(obj)
         return self.response(ServiceResponseStatus.FETCHED,
-                                    result=[ProductSchema.from_sqlalchemy(obj)]
+                                    result=[{**MLOCR, **MLFRESH}]
                 )
 
     async def connect(self, websocket: WebSocket):
