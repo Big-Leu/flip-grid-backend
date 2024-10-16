@@ -19,7 +19,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @router.put("/fill", response_model=None)
 async def list_processes(
-    path: str,
+    path: list[str],
     db: AsyncSession = Depends(get_db_session),
 ) -> ServiceResponse:
     manager =  LiveFeed()

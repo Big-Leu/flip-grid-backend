@@ -14,7 +14,8 @@ class ImageProcessor(BaseService):
 
     def __init__(self, tesseract_cmd, image_path):
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-        self.image_path = image_path
+        self.image_paths = image_path
+        self.image_path = image_path[0]
         self.text = None
         self.model = load_model("backend/services/ml/freshnessmodel.h5")
         self.class_mapping =  {
@@ -109,46 +110,49 @@ class ImageProcessor(BaseService):
         }
         return response
 
-    def load_image(self):
-        self.image = cv2.imread(self.image_path)
-        if self.image is None:
-            raise FileNotFoundError(f"Image not found at path: {self.image_path}")
-        return self.image
+    def load_images(self):
+        self.images = [cv2.imread(image_path) for image_path in self.image_paths]
+        for idx, image in enumerate(self.images):
+            if image is None:
+                raise FileNotFoundError(
+                    f"Image not found at path: {self.image_paths[idx]}"
+                )
+        return self.images
 
     @staticmethod
     def preprocess_image_for_ocr(image):
         # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
+
         # Denoise
         denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-        
+
         # Increase contrast using CLAHE
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         contrast = clahe.apply(denoised)
-        
+
         # Threshold
         _, binary = cv2.threshold(contrast, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
+
         # Dilation and erosion
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         morph = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-        
+
         return morph
 
     def extract_text(self, preprocessed_image):
         # Use multiple page segmentation modes and OCR engine modes
         configs = [
-            '--psm 6',  # Assume a single uniform block of text
-            '--psm 3',  # Fully automatic page segmentation, but no OSD
-            '--psm 4',  # Assume a single column of text of variable sizes
+            "--psm 6",  # Assume a single uniform block of text
+            "--psm 3",  # Fully automatic page segmentation, but no OSD
+            "--psm 4",  # Assume a single column of text of variable sizes
         ]
-        
+
         texts = []
         for config in configs:
             text = pytesseract.image_to_string(preprocessed_image, config=config)
             texts.append(text)
-        
+
         # Choose the text with the most content
         self.text = max(texts, key=len)
         return self.text
@@ -168,9 +172,9 @@ class ImageProcessor(BaseService):
     @staticmethod
     def extract_dates(text):
         patterns = [
-            r'\b((?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-\d{4})\b',
-            r'\b(\d{2}/\d{2}/\d{4})\b',
-            r'\b(\d{2}-\d{2}-\d{4})\b',
+            r"\b((?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-\d{4})\b",
+            r"\b(\d{2}/\d{2}/\d{4})\b",
+            r"\b(\d{2}-\d{2}-\d{4})\b",
         ]
         dates = []
         for pattern in patterns:
@@ -196,47 +200,106 @@ class ImageProcessor(BaseService):
             date_objects.append(date_obj)
         if not date_objects:
             return None, None
-        return (min(date_objects).strftime("%b-%Y"), max(date_objects).strftime("%b-%Y"))
+        return (
+            min(date_objects).strftime("%b-%Y"),
+            max(date_objects).strftime("%b-%Y"),
+        )
 
     @staticmethod
     def find_brand_in_text(text, brand_list):
-        text_words = set(word.lower() for word in re.findall(r'\b\w+\b', text))
-        best_match = None
-        highest_ratio = 0
+        # Loop through each brand name in the list
         for brand in brand_list:
-            brand_words = set(word.lower() for word in brand.split())
-            ratio = len(brand_words.intersection(text_words)) / len(brand_words)
-            if ratio > highest_ratio:
-                highest_ratio = ratio
-                best_match = brand
-        return best_match if highest_ratio > 0.5 else "Brand not found"
+            # Split the brand name into words
+            brand_words = brand.split()
+            # Check if any word from the brand is present in the text
+            for word in brand_words:
+                # Use regex to find the word in the text (case insensitive)
+                if re.search(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE):
+                    return brand  # Return the matched brand if any word is found
+        return "Brand not found"
+    
+    def process_multiple_images(self):
+        self.load_images()
+        extracted_texts = []
 
-    def process_image(self):
-        original_image = self.load_image()
-        preprocessed_image = self.preprocess_image_for_ocr(original_image)
-        text = self.extract_text(preprocessed_image)
+        for image in self.images:
+            # preprocessed_image = self.preprocess_image_for_ocr(image)
+            text = self.extract_text(image)
+            extracted_texts.append(text)
 
-        mrp = self.extract_price(text)
-        dates = self.extract_dates(text)
+        # Combine the text from all images
+        self.combined_text = " ".join(extracted_texts)
+        return self.combined_text
+    
+    def process_images(self):
+        combined_text = self.process_multiple_images()
+
+        # print("Combined Text from All Images:")
+        # print(combined_text)
+
+        mrp = self.extract_price(combined_text)
+        dates = self.extract_dates(combined_text)
         mfg_date, exp_date = self.compare_dates(dates)
 
         brands = [
-            "WH Protective Oil", "Colgate", "LetsShave", "Nivea", "Garnier", "Dettol", "Vaseline",
-            "Himalaya", "Dabur", "Gillette", "Johnson & Johnson", "L'Oréal", "Parachute", "Pepsodent",
-            "Sunsilk", "Lifebuoy", "Ponds", "Clinic Plus", "Head & Shoulders", "Oral-B", "Sensodyne",
-            "Fair & Lovely", "Rexona", "Cinthol", "Patanjali", "Godrej", "HUL (Hindustan Unilever)",
-            "Emami", "Boroplus", "Santoor", "ITC", "Park Avenue", "Fiama", "Old Spice", "Lux", "Wild Stone",
-            "Axe", "Yardley", "Nirma", "Surf Excel", "Ariel", "Tide", "Rin", "Vim", "Medimix", "WH Protective Oil"
+            "WH Protective Oil",
+            "Colgate",
+            "LetsShave",
+            "Nivea",
+            "Garnier",
+            "Dettol",
+            "Vaseline",
+            "Himalaya",
+            "Dabur",
+            "Gillette",
+            "Johnson & Johnson",
+            "L'Oréal",
+            "Parachute",
+            "Pepsodent",
+            "Sunsilk",
+            "Lifebuoy",
+            "Ponds",
+            "Clinic Plus",
+            "Head & Shoulders",
+            "Oral-B",
+            "Sensodyne",
+            "Fair & Lovely",
+            "Rexona",
+            "Cinthol",
+            "Patanjali",
+            "Godrej",
+            "HUL (Hindustan Unilever)",
+            "Emami",
+            "Boroplus",
+            "Santoor",
+            "ITC",
+            "Park Avenue",
+            "Fiama",
+            "Old Spice",
+            "Lux",
+            "Wild Stone",
+            "Axe",
+            "Yardley",
+            "Nirma",
+            "Surf Excel",
+            "Ariel",
+            "Tide",
+            "Rin",
+            "Vim",
+            "Medimix",
+            "WH Protective Oil",
         ]
 
-        brand = self.find_brand_in_text(text, brands)
+        brand = self.find_brand_in_text(combined_text, brands)
 
         response = {
             "name": brand,
             "expiry_date": exp_date,
             "manufacturing_date": mfg_date,
             "mrp": mrp,
-            "description": text[:500] if len(text) > 500 else text  # Truncate long descriptions
+            "description": (
+                combined_text[:500] if len(combined_text) > 500 else combined_text
+            ),
         }
 
         return response
