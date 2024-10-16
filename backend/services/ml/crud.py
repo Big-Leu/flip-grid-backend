@@ -86,6 +86,7 @@ class ImageProcessor(BaseService):
         }
     
     def predict_image(self):
+        print(self.image_path)
         img = image.load_img(
             self.image_path, target_size=(224, 224)
         )
@@ -183,27 +184,34 @@ class ImageProcessor(BaseService):
 
     @staticmethod
     def compare_dates(dates):
-        if not dates:
-            return None, None
-        date_objects = []
-        for date in dates:
-            try:
-                date_obj = datetime.strptime(date, "%b-%Y")
-            except ValueError:
-                try:
-                    date_obj = datetime.strptime(date, "%d/%m/%Y")
-                except ValueError:
+            # Check if any dates are provided
+            if not dates:
+                return None, None
+            
+            date_objects = []
+            for date in dates:
+                # Try parsing the date with multiple formats
+                for fmt in ("%b-%Y","%b.%Y", "%d/%m/%Y", "%d-%m-%Y"):
                     try:
-                        date_obj = datetime.strptime(date, "%d-%m-%Y")
+                        date_obj = datetime.strptime(date, fmt)
+                        date_objects.append(date_obj)
+                        break  # Break if successfully parsed
                     except ValueError:
-                        continue
-            date_objects.append(date_obj)
-        if not date_objects:
-            return None, None
-        return (
-            min(date_objects).strftime("%b-%Y"),
-            max(date_objects).strftime("%b-%Y"),
-        )
+                        continue  # Try the next format
+
+            # If no valid dates were parsed
+            if not date_objects:
+                return None, None
+
+            # Determine manufacturing and expiration dates
+            mfg_date = min(date_objects).strftime("%b-%Y")
+            exp_date = max(date_objects).strftime("%b-%Y")
+            
+            # Return dates based on equality
+            if mfg_date == exp_date:
+                return mfg_date, None
+            else:
+                return mfg_date,exp_date
 
     @staticmethod
     def find_brand_in_text(text, brand_list):
@@ -288,6 +296,8 @@ class ImageProcessor(BaseService):
             "Vim",
             "Medimix",
             "WH Protective Oil",
+            "Nutralite sampriti ghee",
+            "Pramix Food Jaggery Cube"
         ]
 
         brand = self.find_brand_in_text(combined_text, brands)

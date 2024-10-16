@@ -36,5 +36,36 @@ class FormService(BaseService):
             logger.error(f"An error occurred: {e}")
             await self.session.rollback()
             return self.response(ServiceResponseStatus.ERROR, message=str(e)) 
+        
+    async def list_items(self, params: AbstractParams):
+        try:
+            stmt = (
+                select(Product)
+                .order_by(Product.name)
+            )
+            paginated_result = await paginate(self.session, stmt, params, unique=True)
+            metadata = {
+                "total": paginated_result.total,
+                "page": paginated_result.page,
+                "size": paginated_result.size,
+                "pages": paginated_result.pages,
+            }
+            return self.response(
+                ServiceResponseStatus.FETCHED,
+                result=[
+                    ProductSchema(
+                        name=getattr(item, "name", None),
+                        expiry_date=getattr(item, "expiry_date", None),
+                        manufacturing_date=getattr(item, "manufacturing_date", None),
+                        mrp=getattr(item, "mrp", None),
+                    )
+                    for item in paginated_result.items
+                ],
+                metadata=metadata,
+            )
+        except SQLAlchemyError as e:
+            logger.error(f"An error occurred: {e}")
+            await self.session.rollback()
+            return self.response(ServiceResponseStatus.ERROR)       
 
  

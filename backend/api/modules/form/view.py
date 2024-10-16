@@ -4,7 +4,9 @@ from backend.db.dependencies import get_db_session
 from backend.db.models.users import User , current_active_user
 from backend.logging import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi_pagination import Params
 from backend.services.base.cam import LiveFeed
+from backend.services.base.crud import FormService
 router = APIRouter()
 
 logger = get_logger(__name__)
@@ -25,3 +27,13 @@ async def list_processes(
     manager =  LiveFeed()
     result = await manager.process_video(path ,db)
     return result
+
+@router.get("/list", response_model=None)
+async def list_processes(
+    db: AsyncSession = Depends(get_db_session),
+    params: Params = Depends(),
+    # user: User = Depends(current_active_user),
+) -> ServiceResponse:
+    bp = FormService(db)
+    output = await bp.list_items(params)
+    return output

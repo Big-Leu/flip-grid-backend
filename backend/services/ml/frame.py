@@ -1,153 +1,59 @@
 import cv2
-import numpy as np
+import torch
 import os
-import tensorflow as tf
-from keras.api.applications import MobileNetV2
-import keras as ks
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
+import uuid  # Import uuid for generating unique identifiers
 
 
-class FastFrameFinder:
-    def __init__(self):
-        self.model = MobileNetV2(weights="imagenet")
+class ObjectDetectionVideoProcessor:
+    def __init__(self, output_dir, model_name="yolov5s"):
+        self.model = torch.hub.load("ultralytics/yolov5", model_name)
+        self.output_dir = output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
 
-    def preprocess_image(self, image):
-        image = cv2.resize(image, (224, 224))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = tf.keras.applications.mobilenet_v2.preprocess_input(image)
-        return image
+    def process_videos(self, video_paths):
+        saved_frame_paths = []  # List to hold paths of saved frames
+        for video_path in video_paths:
+            saved_frames = self.process_video(video_path)
+            saved_frame_paths.extend(saved_frames)  # Extend the list with saved frames from this video
+        return saved_frame_paths
 
-    def is_target_object(self, class_name):
-        target_objects = set(
-            [
-                "vegetable",
-                "fruit",
-                "produce",
-                "spaghetti_squash",
-                "package",
-                "box",
-                "container",
-                "pop_bottle",
-                "laptop",
-                "sunscreen",
-                "modem",
-                "lotion",
-                "oil_filter",
-                "hard_disc",
-                "carton",
-            ]
-        )
-        return any(item in class_name.lower() for item in target_objects)
-
-    def detect_object(self, image):
-        preprocessed_image = self.preprocess_image(image)
-        predictions = self.model(np.expand_dims(preprocessed_image, axis=0))
-        decoded_predictions = ks.applications.mobilenet_v2.decode_predictions(
-            predictions.numpy(), top=1
-        )[0]
-        class_name = decoded_predictions[0][1]
-        confidence = decoded_predictions[0][2]
-        return class_name, confidence
-
-    def calculate_frame_score(self, frame, class_name, confidence):
-        height, width = frame.shape[:2]
-        center_y, center_x = height // 2, width // 2
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        contours, _ = cv2.findContours(
-            binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-            x, y, w, h = cv2.boundingRect(largest_contour)
-
-            centering_score = (
-                1
-                - (
-                    abs(center_x - (x + w // 2)) / width
-                    + abs(center_y - (y + h // 2)) / height
-                )
-                / 2
-            )
-
-            size_score = (w * h) / (width * height)
-
-            return (0.4 * confidence + 0.3 * centering_score + 0.3 * size_score) * 100
-
-        return 0
-
-    def crop_and_rotate(self, frame):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        contours, _ = cv2.findContours(
-            binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-            x, y, w, h = cv2.boundingRect(largest_contour)
-
-            padding = 20
-            x = max(0, x - padding)
-            y = max(0, y - padding)
-            w = min(frame.shape[1] - x, w + 2 * padding)
-            h = min(frame.shape[0] - y, h + 2 * padding)
-
-            cropped_frame = frame[y : y + h, x : x + w]
-            return cropped_frame
-
-        return frame
-
-    def find_good_frame(self, video_path, save_directory):
+    def process_video(self, video_path):
+        saved_frames = []  # List to hold saved frames for the current video
         cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            print(f"Error: Could not open video file {video_path}")
-            return False
+        frame_count = 0  # Track frame number
 
-        if not os.path.exists(save_directory):
-            os.makedirs(save_directory)
-
-        frame_count = 0
-        list = []
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
+                print(f"Finished processing video: {video_path}")
                 break
 
             frame_count += 1
-            class_name, confidence = self.detect_object(frame)
-            if self.is_target_object(class_name):
-                frame_score = self.calculate_frame_score(frame, class_name, confidence)
 
-                if frame_score > 50:
-                    print(
-                        f"Good frame found in {video_path}: Frame {frame_count}, {class_name}, Score: {frame_score:.2f}"
-                    )
+            # Perform object detection on the frame
+            results = self.model(frame)
+            detected_objects = results.pandas().xyxy[0]  # Bounding boxes and labels in a Pandas DataFrame
 
-                    processed_frame = self.crop_and_rotate(frame)
+            # Check if any object was detected
+            if len(detected_objects) > 0:
+                # Get the names of detected objects
+                object_names = detected_objects["name"].unique()  # Unique object names detected
+                object_names_str = "_".join(object_names)  # Join them into a string for filename
 
-                    image_filename = f"good_{os.path.basename(video_path)}_{class_name}_{frame_score:.2f}_frame_{frame_count}.jpg"
-                    cv2.imwrite(
-                        os.path.join(save_directory, image_filename), processed_frame
-                    )
-                    print(f"Saved good image: {image_filename}")
-                    cap.release()
-                    cv2.destroyAllWindows()
-                    return save_directory+image_filename
+                # Generate a unique filename using uuid
+                unique_id = uuid.uuid4()  # Create a unique identifier
+                output_frame_path = os.path.join(
+                    self.output_dir,
+                    f"frame_with_objects_{frame_count}_{object_names_str}_{unique_id}.jpg",
+                )
+                cv2.imwrite(output_frame_path, frame)
+                saved_frames.append(output_frame_path)  # Append the saved frame path to the list
+
+                print(
+                    f"Frame {frame_count} saved from {video_path} with {len(detected_objects)} detected objects: {object_names_str}"
+                )
+                break
 
         cap.release()
         cv2.destroyAllWindows()
-        print(f"No suitable frames found in {video_path}")
-        return False
-
-
-    def process_video(self,video, save_directory):
-        return self.find_good_frame(video, save_directory)
-
-
-
+        return saved_frames  # Return the list of saved frame paths

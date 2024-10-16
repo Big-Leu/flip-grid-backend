@@ -1,24 +1,13 @@
-from concurrent.futures import Executor, ThreadPoolExecutor, as_completed
 import time
 import uuid
 from fastapi import Depends
 from fastapi import WebSocket
-from backend.commons.responses import ServiceResponse, ServiceResponseStatus
-from backend.db.models.product import Product
+from backend.commons.responses import ServiceResponseStatus
 from backend.logging import get_logger
 from backend.schemas.product import ProductSchema
 from backend.services.base.crud import FormService
 from backend.services.commons.base import BaseService
-import cv2
-import numpy as np
-from PIL import Image
-import os
-from backend.db.dependencies import get_db_session
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
-import tensorflow as tf
-import keras as ks
-from backend.services.ml.frame import FastFrameFinder
+from backend.services.ml.frame import ObjectDetectionVideoProcessor
 from keras.api.applications import MobileNetV2
 from backend.services.ml.crud import ImageProcessor
 logger = get_logger(__name__)
@@ -34,32 +23,12 @@ class LiveFeed(BaseService):
     
 
     async def process_video(self, videos ,db):
-        finder = FastFrameFinder()
         save_directory = 'backend/services/video/bestframes/'
-
-        start_time = time.time()
-        frame = []
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_video = {
-                executor.submit(finder.process_video, video, save_directory): video
-                for video in videos
-            }
-            for future in as_completed(future_to_video):
-                video = future_to_video[future]
-                try:
-                    result = future.result()
-                    if isinstance(result, str):
-                        frame.append(result)
-                    print(
-                        f"Processing completed for {video}: {'Frame found' if isinstance(result, str) else 'No frame found'}"
-                    )
-                except Exception as exc:
-                    print(f"Processing for {video} generated an exception: {exc}")
-
-        end_time = time.time()
-        print(f"Total processing time: {end_time - start_time:.2f} seconds")
-        MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', frame).process_images()
-        MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', frame).predict_image()
+        processor = ObjectDetectionVideoProcessor(save_directory)
+        saved_frames = processor.process_videos(videos)
+        print(saved_frames)
+        MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', saved_frames).process_images()
+        MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', saved_frames).predict_image()
         print(MLFRESH)
         obj = ProductSchema(
                     name=MLOCR["name"],
