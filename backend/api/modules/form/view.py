@@ -25,7 +25,7 @@ async def list_processes(
     db: AsyncSession = Depends(get_db_session),
 ) -> ServiceResponse:
     manager =  LiveFeed()
-    result = await manager.process_video(path ,db)
+    result = await manager.process_somethings(path)
     return result
 
 @router.get("/list", response_model=None)

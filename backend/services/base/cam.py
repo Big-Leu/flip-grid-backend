@@ -1,3 +1,6 @@
+import base64
+import json
+import os
 import time
 import uuid
 from fastapi import Depends
@@ -52,29 +55,64 @@ class LiveFeed(BaseService):
         self.active_connections.remove(websocket)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
-        video_path = f"backend/services/video/{self.id}.mkv"
-        # await websocket.send_text(self.id)
+        image_list = []  # List to hold the paths of saved images
+        image_count = 0  # Counter for unique image filenames
+        image_dir = 'backend/services/video/images/'
+
+        # Create the directory if it doesn't exist
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
         try:
-            with open(video_path, "wb") as video_file:
-                while True:
-                    try:
-                        print("Receiving data")
-                        data = await websocket.receive_bytes()
-                        if not data:
-                            print("data null")
-                            break 
-                        print("recived data")
-                        video_file.write(data)
-                        print("data written")
-                    except Exception as e:
-                        print(f"Error receiving data: {e}")
-                        await websocket.send_text(self.id)
-                        break
+            prev =""
+            while True:
+                try:
+                    # Receive JSON data
+                    data = await websocket.receive_text()
+                    
+                    if not data:
+                        print("No data received, exiting loop")
+                        break 
+
+                    json_data = json.loads(data)  # Parse the received JSON
+
+                    # Extract image and class data
+                    image_base64 = json_data.get('image')
+                    detected_class = json_data.get('class')
+                    
+                    if image_base64:
+                        image_data = base64.b64decode(image_base64.split(",")[1])
+
+                        image_filename = f"backend/services/video/images/{self.id}_image_{detected_class}_{image_count}.jpg"
+                        if detected_class != prev:
+                            print("Enterned here")
+                            image_list.append(image_filename)
+
+                            with open(image_filename, "wb") as image_file:
+                                image_file.write(image_data)
+                            
+                            print(f"Image saved: {image_filename}")
+                            image_count += 1
+                    if image_count >= 20 and detected_class != prev:
+                        image_count=0
+                        prev = detected_class
+                        print(detected_class,prev,"fucjdjflsdjf;lsdjf;ljdsfljasdl;fjaslk")
+                        await websocket.send_json({"img": image_list})
+                        image_list.clear()
+                except Exception as e:
+                    print(f"Error receiving or processing data: {e}")
+                    await websocket.send_text(f"Error: {str(e)}")
+                    break
         except Exception as e:
             print(f"File handling error: {e}")
+
+        # Optionally send the list of saved images back to the client
+
+
  
     async def process_somethings(self, video_path:list[str]):
-         await self.process_video(video_path)
+         MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
+         return self.response(ServiceResponseStatus.FETCHED,
+         result=[{**MLOCR}])
 
     async def broadcast(self, message: str):
         for connection in self.active_connections:
