@@ -15,7 +15,6 @@ class ImageProcessor(BaseService):
     def __init__(self, tesseract_cmd, image_path):
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
         self.image_paths = image_path
-        self.image_path = image_path[0]
         self.text = None
         self.model = load_model("backend/services/ml/freshnessmodel.h5")
         self.class_mapping =  {
@@ -85,10 +84,10 @@ class ImageProcessor(BaseService):
             63: "rottenwatermelon",
         }
     
-    def predict_image(self):
-        print(self.image_path)
+    def predict_image(self, image_path):
+        print(image_path)
         img = image.load_img(
-            self.image_path, target_size=(224, 224)
+            image_path, target_size=(224, 224)
         )
         img_array = image.img_to_array(img) 
         img_array = np.expand_dims(img_array, axis=0)
@@ -102,14 +101,34 @@ class ImageProcessor(BaseService):
 
         predicted_label = self.class_mapping[
             predicted_class_index
-        ] 
-        print(f"Predicted Class: {predicted_label}")
-        print(f"Confidence: {confidence:.2f}%")
+        ]
+        predicted_label = self.class_mapping[predicted_class_index]  # Map the predicted index to the label
+
+        return predicted_label, confidence
+
+
+    def predict_best_image(self, image_paths):
+        best_label = None
+        highest_confidence = 0
+
+        # Loop through all the images
+        for image_path in image_paths:
+            predicted_label, confidence = self.predict_image(image_path)
+            print(f"Image: {image_path}, Predicted Class: {predicted_label}, Confidence: {confidence:.2f}%")
+
+            # If this image has a higher confidence, update the best prediction
+            if confidence > highest_confidence:
+                highest_confidence = confidence
+                best_label = predicted_label
+
+        print(f"Predicted Class: {best_label}")
+        print(f"Confidence: {highest_confidence:.2f}%")
         response = {
-            "Predicted Class": predicted_label,
-            "Confidence": {confidence},
+            "Predicted Class": best_label,
+            "Confidence": {highest_confidence},
         }
         return response
+
 
     def load_images(self):
         self.images = [cv2.imread(image_path) for image_path in self.image_paths]

@@ -95,7 +95,7 @@ class LiveFeed(BaseService):
                     if image_count >= 20 and detected_class != prev:
                         image_count=0
                         prev = detected_class
-                        print(detected_class,prev,"fucjdjflsdjf;lsdjf;ljdsfljasdl;fjaslk")
+                        print(detected_class,prev,":---------------bigleu was here")
                         await websocket.send_json({"img": image_list})
                         image_list.clear()
                 except Exception as e:
@@ -109,10 +109,22 @@ class LiveFeed(BaseService):
 
 
  
-    async def process_somethings(self, video_path:list[str]):
-         MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
-         return self.response(ServiceResponseStatus.FETCHED,
-         result=[{**MLOCR}])
+    async def process_somethings(self,db, video_path:list[str]):
+        MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
+        MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).predict_best_image(video_path)
+        print(MLFRESH)
+        obj = ProductSchema(
+                    name=MLOCR["name"],
+                    expiry_date=MLOCR["expiry_date"],
+                    manufacturing_date=MLOCR.get("manufacturing_date"),
+                    mrp=MLOCR["mrp"],
+                    description=MLFRESH.get("Predicted Class")
+                )
+        service = FormService(db)
+        await service.createProductListing(obj)
+        return self.response(ServiceResponseStatus.FETCHED,
+                                    result=[{**MLOCR, **MLFRESH}]
+                )
 
     async def broadcast(self, message: str):
         for connection in self.active_connections:
