@@ -7,7 +7,7 @@ from fastapi import Depends
 from fastapi import WebSocket
 from backend.commons.responses import ServiceResponseStatus
 from backend.logging import get_logger
-from backend.schemas.product import ProductSchema
+from backend.schemas.product import ProductSchema, ProductSchema2
 from backend.services.base.crud import FormService
 from backend.services.commons.base import BaseService
 from backend.services.ml.frame import ObjectDetectionVideoProcessor
@@ -55,27 +55,24 @@ class LiveFeed(BaseService):
         self.active_connections.remove(websocket)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
-        image_list = []  # List to hold the paths of saved images
-        image_count = 0  # Counter for unique image filenames
+        image_list = [] 
+        image_count = 0 
         image_dir = 'backend/services/video/images/'
 
-        # Create the directory if it doesn't exist
         if not os.path.exists(image_dir):
             os.makedirs(image_dir)
         try:
             prev =""
             while True:
                 try:
-                    # Receive JSON data
                     data = await websocket.receive_text()
                     
                     if not data:
                         print("No data received, exiting loop")
                         break 
 
-                    json_data = json.loads(data)  # Parse the received JSON
+                    json_data = json.loads(data)
 
-                    # Extract image and class data
                     image_base64 = json_data.get('image')
                     detected_class = json_data.get('class')
                     
@@ -110,21 +107,34 @@ class LiveFeed(BaseService):
 
  
     async def process_somethings(self,db, video_path:list[str]):
-        MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
-        MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).predict_best_image(video_path)
-        print(MLFRESH)
-        obj = ProductSchema(
-                    name=MLOCR["name"],
-                    expiry_date=MLOCR["expiry_date"],
-                    manufacturing_date=MLOCR.get("manufacturing_date"),
-                    mrp=MLOCR["mrp"],
-                    description=MLFRESH.get("Predicted Class")
-                )
-        service = FormService(db)
-        await service.createProductListing(obj)
-        return self.response(ServiceResponseStatus.FETCHED,
-                                    result=[{**MLOCR, **MLFRESH}]
-                )
+        try:
+            MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
+            if all(key in MLOCR and MLOCR[key] for key in ["name", "expiry_date", "mrp"]):
+                print("Required fields are present, proceed further.")
+                obj = ProductSchema(
+                            name=MLOCR["name"],
+                            expiry_date=MLOCR["expiry_date"],
+                            manufacturing_date=MLOCR.get("manufacturing_date"),
+                            mrp=MLOCR["mrp"],
+                            description="A PACKAGED PRODUCT"
+                        )
+            else:
+                print("Required fields are missing.")
+                MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).predict_best_image(video_path)
+                print(MLFRESH)
+                obj = ProductSchema(
+                            freshStatus=MLFRESH["Predicted Class"],
+                            expiry_date="1 WEEK",
+                            description="FRUITS OR VEGETABLE",
+                            confidence = str(list(MLFRESH["Confidence"])[0] if isinstance(MLFRESH["Confidence"], set) else MLFRESH["Confidence"]),
+                        )
+            service = FormService(db)
+            await service.createProductListing(obj)
+            return self.response(ServiceResponseStatus.FETCHED,
+                                        result=[ProductSchema2.from_sqlalchemy(obj)]
+                    )
+        except Exception as e:
+            print("the eror",e)
 
     async def broadcast(self, message: str):
         for connection in self.active_connections:

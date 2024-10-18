@@ -11,4 +11,6 @@ class Product(Base):
     manufacturing_date = Column(String, nullable=True)
     mrp = Column(String, nullable=True)
     description = Column(String, nullable=True)
+    freshStatus = Column(String, nullable=True)
+    confidence = Column(String, nullable=True)
 
