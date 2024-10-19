@@ -109,7 +109,7 @@ class LiveFeed(BaseService):
     async def process_somethings(self,db, video_path:list[str]):
         try:
             MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
-            if all(key in MLOCR and MLOCR[key] for key in ["name", "expiry_date", "mrp"]):
+            if any(key in MLOCR and MLOCR[key] for key in ["name", "expiry_date", "mrp"]):
                 print("Required fields are present, proceed further.")
                 obj = ProductSchema(
                             name=MLOCR["name"],

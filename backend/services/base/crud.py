@@ -58,6 +58,7 @@ class FormService(BaseService):
                         expiry_date=getattr(item, "expiry_date", None),
                         manufacturing_date=getattr(item, "manufacturing_date", None),
                         mrp=getattr(item, "mrp", None),
+                        description=getattr(item,"description",None)
                     )
                     for item in paginated_result.items
                 ],
