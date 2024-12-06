@@ -25,26 +25,6 @@ class LiveFeed(BaseService):
         self.active_connections: list[WebSocket] = []
     
 
-    async def process_video(self, videos ,db):
-        save_directory = 'backend/services/video/bestframes/'
-        processor = ObjectDetectionVideoProcessor(save_directory)
-        saved_frames = processor.process_videos(videos)
-        print(saved_frames)
-        MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', saved_frames).process_images()
-        MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', saved_frames).predict_image()
-        print(MLFRESH)
-        obj = ProductSchema(
-                    name=MLOCR["name"],
-                    expiry_date=MLOCR["expiry_date"],
-                    manufacturing_date=MLOCR.get("manufacturing_date"),  # Use .get() in case the key is missing
-                    mrp=MLOCR["mrp"],
-                    description=MLFRESH.get("Predicted Class")
-                )
-        service = FormService(db)
-        await service.createProductListing(obj)
-        return self.response(ServiceResponseStatus.FETCHED,
-                                    result=[{**MLOCR, **MLFRESH}]
-                )
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -102,24 +82,33 @@ class LiveFeed(BaseService):
         except Exception as e:
             print(f"File handling error: {e}")
 
-        # Optionally send the list of saved images back to the client
+    def process(self, video_paths: list[str]) -> bool:
+        fruit_keywords = ['banana', 'apple', 'orange', 'grape', 'mango', 'pear']
+        for path in video_paths:
+            if any(fruit.lower() in path.lower() for fruit in fruit_keywords):
+                return True
+        return False  
 
-
- 
     async def process_somethings(self,db, video_path:list[str]):
         try:
-            MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
-            if any(key in MLOCR and MLOCR[key] for key in ["name", "expiry_date", "mrp"]):
-                print("Required fields are present, proceed further.")
-                obj = ProductSchema(
-                            name=MLOCR["name"],
-                            expiry_date=MLOCR["expiry_date"],
-                            manufacturing_date=MLOCR.get("manufacturing_date"),
-                            mrp=MLOCR["mrp"],
-                            description="A PACKAGED PRODUCT"
-                        )
+            flag = self.process(video_path)
+            service = FormService(db)
+            if not flag:
+                MLOCR = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).process_images()
+                if any(key in MLOCR and MLOCR[key] for key in ["name", "expiry_date", "mrp"]):
+                    print("Required fields are present, proceed further.")
+                    obj = ProductSchema(
+                                name=MLOCR["name"],
+                                expiry_date=MLOCR["expiry_date"],
+                                manufacturing_date=MLOCR.get("manufacturing_date"),
+                                mrp=MLOCR["mrp"],
+                                description="A PACKAGED PRODUCT"
+                            )
+                    await service.createProductListing(obj)
+                return self.response(ServiceResponseStatus.FETCHED,
+                                        result=[ProductSchema2.from_sqlalchemy(obj)]
+                    )
             else:
-                print("Required fields are missing.")
                 MLFRESH = ImageProcessor(r'C:/Program Files/Tesseract-OCR/tesseract.exe', video_path).predict_best_image(video_path)
                 print(MLFRESH)
                 obj = ProductSchema(
@@ -128,9 +117,9 @@ class LiveFeed(BaseService):
                             description="FRUITS OR VEGETABLE",
                             confidence = str(list(MLFRESH["Confidence"])[0] if isinstance(MLFRESH["Confidence"], set) else MLFRESH["Confidence"]),
                         )
-            service = FormService(db)
-            await service.createProductListing(obj)
-            return self.response(ServiceResponseStatus.FETCHED,
+                if "rotten" not in MLFRESH["Predicted Class"].lower():
+                    await service.createProductListing(obj)
+                return self.response(ServiceResponseStatus.FETCHED,
                                         result=[ProductSchema2.from_sqlalchemy(obj)]
                     )
         except Exception as e:
