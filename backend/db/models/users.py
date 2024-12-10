@@ -153,6 +153,7 @@ class AutoRedirectCookieBackend(AuthenticationBackend):
         response.headers["Location"] = settings.REDIRECT_LOGIN_URL
         return response
 
+
 auth_sso_cookie = AutoRedirectCookieBackend(
     name="sso_cookie",
     transport=cookie_transport,

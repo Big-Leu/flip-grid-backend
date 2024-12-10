@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.commons.responses import ServiceResponse
 from backend.db.dependencies import get_db_session
 from backend.db.models.users import UserCreate, UserRead, api_users  # type: ignore
-from backend.db.models.users import auth_sso_cookie, auth_cookie # type: ignore
+from backend.db.models.users import auth_sso_cookie, auth_cookie  # type: ignore
 from backend.db.models.users import google_oauth_client  # type: ignore
 from backend.db.models.users import (  # type: ignore
     User,
@@ -41,6 +41,7 @@ router.include_router(
     tags=["auth"],
 )
 
+
 @router.get("/whoami", response_model=None)
 async def user_data(
     db: AsyncSession = Depends(get_db_session),
@@ -48,6 +49,7 @@ async def user_data(
 ) -> ServiceResponse:
     bp_service = GoogleAPIService(db)
     return await bp_service.Read(user.email, user.id)
+
 
 @router.get("/userdata", response_model=None)
 async def user_data(

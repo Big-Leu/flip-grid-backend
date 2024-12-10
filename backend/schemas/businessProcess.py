@@ -30,7 +30,7 @@ class UserDetailSchema(BaseModel):
 
     class Config:
         fromAttributes = True
-        arbitrary_types_allowed=True
+        arbitrary_types_allowed = True
 
 
 class ProcessUpdateInputSchema(BaseModel):
@@ -38,8 +38,7 @@ class ProcessUpdateInputSchema(BaseModel):
 
     class Config:
         from_attributes = True
-        arbitrary_types_allowed=True
-
+        arbitrary_types_allowed = True
 
 
 # class ProcessCreateInputSchema(BaseModel):

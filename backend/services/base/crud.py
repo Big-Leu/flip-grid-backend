@@ -31,18 +31,18 @@ class FormService(BaseService):
             plan = Product(**data)
             self.session.add(plan)  # No await needed
             await self.session.commit()
-            return self.response(ServiceResponseStatus.CREATED, result=ProductSchema.from_sqlalchemy(plan))
+            return self.response(
+                ServiceResponseStatus.CREATED,
+                result=ProductSchema.from_sqlalchemy(plan),
+            )
         except SQLAlchemyError as e:
             logger.error(f"An error occurred: {e}")
             await self.session.rollback()
-            return self.response(ServiceResponseStatus.ERROR, message=str(e)) 
-        
+            return self.response(ServiceResponseStatus.ERROR, message=str(e))
+
     async def list_items(self, params: AbstractParams):
         try:
-            stmt = (
-                select(Product)
-                .order_by(Product.name)
-            )
+            stmt = select(Product).order_by(Product.name)
             paginated_result = await paginate(self.session, stmt, params, unique=True)
             metadata = {
                 "total": paginated_result.total,
@@ -58,7 +58,7 @@ class FormService(BaseService):
                         expiry_date=getattr(item, "expiry_date", None),
                         manufacturing_date=getattr(item, "manufacturing_date", None),
                         mrp=getattr(item, "mrp", None),
-                        description=getattr(item,"description",None)
+                        description=getattr(item, "description", None),
                     )
                     for item in paginated_result.items
                 ],
@@ -67,6 +67,4 @@ class FormService(BaseService):
         except SQLAlchemyError as e:
             logger.error(f"An error occurred: {e}")
             await self.session.rollback()
-            return self.response(ServiceResponseStatus.ERROR)       
-
- 
+            return self.response(ServiceResponseStatus.ERROR)

@@ -15,14 +15,14 @@ class bookingform(BaseModel):
     userAadhar: Optional[str] = None
     userDrivingLicense: Optional[str] = None
     date: Optional[datetime.datetime] = None
+
     class Config:
         from_attributes = True
 
     @classmethod
-    def from_sqlalchemy(
-        cls, model: User
-    ) -> "bookingform":
+    def from_sqlalchemy(cls, model: User) -> "bookingform":
         return cls.model_validate(model)
+
 
 class FormInputSchema(BaseModel):
     userName: str
@@ -30,8 +30,10 @@ class FormInputSchema(BaseModel):
     mobile: str
     userEmail: str
 
+
 class fillslots(BaseModel):
     slots: list[int]
+
 
 class UserDetailSchema(BaseModel):
     userName: Optional[str] = None
@@ -40,4 +42,4 @@ class UserDetailSchema(BaseModel):
 
     class Config:
         fromAttributes = True
-        arbitrary_types_allowed=True
+        arbitrary_types_allowed = True

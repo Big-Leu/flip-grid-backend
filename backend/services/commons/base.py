@@ -11,7 +11,9 @@ from backend.commons.responses import ServiceResponse, ServiceResponseStatus
 from backend.db.base import Base
 from backend.db.models.users import User
 from backend.schemas.form import UserDetailSchema
+
 logger = get_logger(__name__)
+
 
 class BaseService:
     __item_name__ = "BaseSerivce"
@@ -35,25 +37,26 @@ class BaseService:
         return ServiceResponse(
             status, message, self.__item_name__, result, metadata=metadata
         )
+
     async def user_list(self, user1: str) -> ServiceResponse:
         try:
             # Adjust the query to select both bp_unit_name and bp_unit_id
             query = select(User.userName, User.email, User.id)
-            result = await self.session.execute(query)       
+            result = await self.session.execute(query)
             names = [
-                {
-                    "userData" : await self.get_user_details(getattr(row, "id", None))
-                }
+                {"userData": await self.get_user_details(getattr(row, "id", None))}
                 for row in result.all()
                 if getattr(row, "id", None) != user1
             ]
-    
+
             return BaseService.response(ServiceResponseStatus.FETCHED, result=names)
         except SQLAlchemyError as e:
             logger.error(f"An error occurred: {e}")
             return BaseService.response(ServiceResponseStatus.ERROR)
-    async def get_user_details(self, reviewer_uuid: Union[None, str]
-                               ) -> Union[None, UserDetailSchema]:
+
+    async def get_user_details(
+        self, reviewer_uuid: Union[None, str]
+    ) -> Union[None, UserDetailSchema]:
         if reviewer_uuid is None:
             return None
         user_profile = await self.get_user_profile_by_uuid(reviewer_uuid)
@@ -65,6 +68,7 @@ class BaseService:
                 email=user_profile.email,
             )
         return None
+
     async def get_user_profile_by_uuid(self, uuid: str) -> Union[None, User]:
         query = select(User).filter_by(id=uuid)
         result = await self.session.execute(query)
@@ -125,20 +129,19 @@ def create_filter_class(
     new_filter_class.__annotations__["Constants"] = ClassVar[Type[Constants]]
     return new_filter_class
 
+
 async def user_list(self, user1: str) -> ServiceResponse:
-        try:
-            # Adjust the query to select both bp_unit_name and bp_unit_id
-            query = select(User.userName, User.email, User.id)
-            result = await self.session.execute(query)       
-            names = [
-                {
-                    "userData" : await self.get_user_details(getattr(row, "id", None))
-                }
-                for row in result.all()
-                if getattr(row, "id", None) != user1
-            ]
-    
-            return BaseService.response(ServiceResponseStatus.FETCHED, result=names)
-        except SQLAlchemyError as e:
-            logger.error(f"An error occurred: {e}")
-            return BaseService.response(ServiceResponseStatus.ERROR)
+    try:
+        # Adjust the query to select both bp_unit_name and bp_unit_id
+        query = select(User.userName, User.email, User.id)
+        result = await self.session.execute(query)
+        names = [
+            {"userData": await self.get_user_details(getattr(row, "id", None))}
+            for row in result.all()
+            if getattr(row, "id", None) != user1
+        ]
+
+        return BaseService.response(ServiceResponseStatus.FETCHED, result=names)
+    except SQLAlchemyError as e:
+        logger.error(f"An error occurred: {e}")
+        return BaseService.response(ServiceResponseStatus.ERROR)

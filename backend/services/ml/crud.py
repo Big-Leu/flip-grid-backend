@@ -8,7 +8,6 @@ from keras.api.preprocessing import image
 from keras.api.models import load_model
 
 
-
 class ImageProcessor(BaseService):
     __item_name__ = "ML_OCR"
 
@@ -17,7 +16,7 @@ class ImageProcessor(BaseService):
         self.image_paths = image_path
         self.text = None
         self.model = load_model("backend/services/ml/freshnessmodel.h5")
-        self.class_mapping =  {
+        self.class_mapping = {
             0: "freshapples",
             1: "freshbanana",
             2: "freshbittergroud",
@@ -83,29 +82,24 @@ class ImageProcessor(BaseService):
             62: "rottentomato",
             63: "rottenwatermelon",
         }
-    
+
     def predict_image(self, image_path):
         print(image_path)
-        img = image.load_img(
-            image_path, target_size=(224, 224)
-        )
-        img_array = image.img_to_array(img) 
+        img = image.load_img(image_path, target_size=(224, 224))
+        img_array = image.img_to_array(img)
         img_array = np.expand_dims(img_array, axis=0)
         img_array /= 255.0
 
         prediction = self.model.predict(img_array)
-        predicted_class_index = np.argmax(prediction, axis=1)[
-            0
-        ] 
+        predicted_class_index = np.argmax(prediction, axis=1)[0]
         confidence = np.max(prediction) * 100
 
+        predicted_label = self.class_mapping[predicted_class_index]
         predicted_label = self.class_mapping[
             predicted_class_index
-        ]
-        predicted_label = self.class_mapping[predicted_class_index]  # Map the predicted index to the label
+        ]  # Map the predicted index to the label
 
         return predicted_label, confidence
-
 
     def predict_best_image(self, image_paths):
         best_label = None
@@ -114,7 +108,9 @@ class ImageProcessor(BaseService):
         # Loop through all the images
         for image_path in image_paths:
             predicted_label, confidence = self.predict_image(image_path)
-            print(f"Image: {image_path}, Predicted Class: {predicted_label}, Confidence: {confidence:.2f}%")
+            print(
+                f"Image: {image_path}, Predicted Class: {predicted_label}, Confidence: {confidence:.2f}%"
+            )
 
             # If this image has a higher confidence, update the best prediction
             if confidence > highest_confidence:
@@ -128,7 +124,6 @@ class ImageProcessor(BaseService):
             "Confidence": {highest_confidence},
         }
         return response
-
 
     def load_images(self):
         self.images = [cv2.imread(image_path) for image_path in self.image_paths]
@@ -203,34 +198,34 @@ class ImageProcessor(BaseService):
 
     @staticmethod
     def compare_dates(dates):
-            # Check if any dates are provided
-            if not dates:
-                return None, None
-            
-            date_objects = []
-            for date in dates:
-                # Try parsing the date with multiple formats
-                for fmt in ("%b-%Y","%b.%Y", "%d/%m/%Y", "%d-%m-%Y"):
-                    try:
-                        date_obj = datetime.strptime(date, fmt)
-                        date_objects.append(date_obj)
-                        break  # Break if successfully parsed
-                    except ValueError:
-                        continue  # Try the next format
+        # Check if any dates are provided
+        if not dates:
+            return None, None
 
-            # If no valid dates were parsed
-            if not date_objects:
-                return None, None
+        date_objects = []
+        for date in dates:
+            # Try parsing the date with multiple formats
+            for fmt in ("%b-%Y", "%b.%Y", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    date_obj = datetime.strptime(date, fmt)
+                    date_objects.append(date_obj)
+                    break  # Break if successfully parsed
+                except ValueError:
+                    continue  # Try the next format
 
-            # Determine manufacturing and expiration dates
-            mfg_date = min(date_objects).strftime("%b-%Y")
-            exp_date = max(date_objects).strftime("%b-%Y")
-            
-            # Return dates based on equality
-            if mfg_date == exp_date:
-                return mfg_date, None
-            else:
-                return mfg_date,exp_date
+        # If no valid dates were parsed
+        if not date_objects:
+            return None, None
+
+        # Determine manufacturing and expiration dates
+        mfg_date = min(date_objects).strftime("%b-%Y")
+        exp_date = max(date_objects).strftime("%b-%Y")
+
+        # Return dates based on equality
+        if mfg_date == exp_date:
+            return mfg_date, None
+        else:
+            return mfg_date, exp_date
 
     @staticmethod
     def find_brand_in_text(text, brand_list):
@@ -244,7 +239,7 @@ class ImageProcessor(BaseService):
                 if re.search(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE):
                     return brand  # Return the matched brand if any word is found
         return "Brand not found"
-    
+
     def process_multiple_images(self):
         self.load_images()
         extracted_texts = []
@@ -257,7 +252,7 @@ class ImageProcessor(BaseService):
         # Combine the text from all images
         self.combined_text = " ".join(extracted_texts)
         return self.combined_text
-    
+
     def process_images(self):
         combined_text = self.process_multiple_images()
 
@@ -316,7 +311,7 @@ class ImageProcessor(BaseService):
             "Medimix",
             "WH Protective Oil",
             "Nutralite sampriti ghee",
-            "Pramix Food Jaggery Cube"
+            "Pramix Food Jaggery Cube",
         ]
 
         brand = self.find_brand_in_text(combined_text, brands)

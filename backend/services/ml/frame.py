@@ -14,7 +14,9 @@ class ObjectDetectionVideoProcessor:
         saved_frame_paths = []  # List to hold paths of saved frames
         for video_path in video_paths:
             saved_frames = self.process_video(video_path)
-            saved_frame_paths.extend(saved_frames)  # Extend the list with saved frames from this video
+            saved_frame_paths.extend(
+                saved_frames
+            )  # Extend the list with saved frames from this video
         return saved_frame_paths
 
     def process_video(self, video_path):
@@ -32,13 +34,19 @@ class ObjectDetectionVideoProcessor:
 
             # Perform object detection on the frame
             results = self.model(frame)
-            detected_objects = results.pandas().xyxy[0]  # Bounding boxes and labels in a Pandas DataFrame
+            detected_objects = results.pandas().xyxy[
+                0
+            ]  # Bounding boxes and labels in a Pandas DataFrame
 
             # Check if any object was detected
             if len(detected_objects) > 0:
                 # Get the names of detected objects
-                object_names = detected_objects["name"].unique()  # Unique object names detected
-                object_names_str = "_".join(object_names)  # Join them into a string for filename
+                object_names = detected_objects[
+                    "name"
+                ].unique()  # Unique object names detected
+                object_names_str = "_".join(
+                    object_names
+                )  # Join them into a string for filename
 
                 # Generate a unique filename using uuid
                 unique_id = uuid.uuid4()  # Create a unique identifier
@@ -47,7 +55,9 @@ class ObjectDetectionVideoProcessor:
                     f"frame_with_objects_{frame_count}_{object_names_str}_{unique_id}.jpg",
                 )
                 cv2.imwrite(output_frame_path, frame)
-                saved_frames.append(output_frame_path)  # Append the saved frame path to the list
+                saved_frames.append(
+                    output_frame_path
+                )  # Append the saved frame path to the list
 
                 print(
                     f"Frame {frame_count} saved from {video_path} with {len(detected_objects)} detected objects: {object_names_str}"
