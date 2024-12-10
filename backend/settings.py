@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     REDIRECT_CALLBACK_URL: str = cfg.get("REDIRECT_CALLBACK_URL")
     FAILED_LOGIN_ROUTE: str = cfg.get("FAILED_LOGIN_ROUTE")
     cookie_domain: str = cfg.get("cookie_domain")
+    ACCESS_KEY: str = cfg.get("ACCESS_KEY")
+    SECRET_KEY:str = cfg.get("SECRET_KEY")
+    REGION: str = cfg.get("REGION")
     host: str = cfg.get("host")
     port: int = cfg.get("port")
     # quantity of workers for uvicorn
@@ -82,6 +85,7 @@ class Settings(BaseSettings):
     cache: ClassVar[TTLCache] = TTLCache(
         cfg.get("CACHE_MAXSIZE"), ttl=timedelta(hours=cfg.get("CACHE_TIMEOUT_HOUR"))
     )
+    TF_ENABLE_ONEDNN_OPTS: int = cfg.get("TF_ENABLE_ONEDNN_OPTS")
     CLIENT_ID: str = cfg.get("GOOGLE_CLIENT_ID")
     CLIENT_SECRET: str = cfg.get("GOOGLE_CLIENT_SECRET")
     # This variable is used to define

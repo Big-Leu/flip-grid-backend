@@ -1,3 +1,5 @@
+import uuid
+from backend.schemas.product import PackagedProductSchema
 from backend.services.commons.base import BaseService
 import pytesseract
 import cv2
@@ -6,82 +8,80 @@ import re
 from datetime import datetime
 from keras.api.preprocessing import image
 from keras.api.models import load_model
+import boto3
+import pandas as pd
+from backend.settings import settings
 
 
 class ImageProcessor(BaseService):
     __item_name__ = "ML_OCR"
 
-    def __init__(self, tesseract_cmd, image_path):
+    def __init__(self, tesseract_cmd, image_path,count):
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
         self.image_paths = image_path
+        self.count = count
         self.text = None
-        self.model = load_model("backend/services/ml/freshnessmodel.h5")
+
         self.class_mapping = {
-            0: "freshapples",
-            1: "freshbanana",
-            2: "freshbittergroud",
-            3: "freshbottlegourd",
-            4: "freshbroccoli",
-            5: "freshcabbages",
-            6: "freshcapsicum",
-            7: "freshcarrots",
-            8: "freshcauliflower",
-            9: "freshchilli",
-            10: "freshcorn",
-            11: "freshcucumber",
-            12: "fresheggplant",
-            13: "freshgarlic",
-            14: "freshgrapes",
-            15: "freshguava",
-            16: "freshkiwi",
-            17: "freshlemons",
-            18: "freshmangoes",
-            19: "freshokra",
-            20: "freshonions",
-            21: "freshoranges",
-            22: "freshpapaya",
-            23: "freshpineapple",
-            24: "freshpomegranate",
-            25: "freshpotato",
-            26: "freshpumpkin",
-            27: "freshradish",
-            28: "freshspinach",
-            29: "freshstrawberries",
-            30: "freshtomato",
-            31: "freshwatermelon",
-            32: "rottenapples",
-            33: "rottenbanana",
-            34: "rottenbittergroud",
-            35: "rottenbottlegourd",
-            36: "rottenbroccoli",
-            37: "rottencabbages",
-            38: "rottencapsicum",
-            39: "rottencarrots",
-            40: "rottencauliflower",
-            41: "rottenchilli",
-            42: "rottencorn",
-            43: "rottencucumber",
-            44: "rotteneggplant",
-            45: "rottengarlic",
-            46: "rottengrapes",
-            47: "rottenguava",
-            48: "rottenkiwi",
-            49: "rottenlemons",
-            50: "rottenmangoes",
-            51: "rottenokra",
-            52: "rottenonions",
-            53: "rottenoranges",
-            54: "rottenpapaya",
-            55: "rottenpineapple",
-            56: "rottenpomegranate",
-            57: "rottenpotato",
-            58: "rottenpumpkin",
-            59: "rottenradish",
-            60: "rottenspinach",
-            61: "rottenstrawberries",
-            62: "rottentomato",
-            63: "rottenwatermelon",
+            0: 'freshapple', 1: 'freshbanana', 2: 'freshguava', 3: 'freshpomegranate', 4: 'freshorange', 
+            5: 'partiallyfreshapple', 6: 'partiallyfreshbanana', 7: 'partiallyfreshguava', 
+            8: 'partiallyfreshpomegranate', 9: 'partiallyfreshorange', 
+            10: 'rottenapple', 11: 'rottenbanana', 12: 'rottenguava', 
+            13: 'rottenpomegranate', 14: 'rottenorange'
         }
+        self.shelf_life_map = {
+            'freshapple': 7,  
+            'freshbanana': 5,  
+            'freshguava': 6,  
+            'freshpomegranate': 7,  
+            'freshorange': 6,  
+            'partiallyfreshapple': 4,  
+            'partiallyfreshbanana': 3,  
+            'partiallyfreshguava': 4,  
+            'partiallyfreshpomegranate': 5,  
+            'partiallyfreshorange': 4,  
+            'rottenapple': 0,  
+            'rottenbanana': 0,  
+            'rottenguava': 0,  
+            'rottenpomegranate': 0,  
+            'rottenorange': 0  
+        }
+
+
+        self.freshness_score_map = {
+            'freshapple': 1,  
+            'freshbanana': 1,
+            'freshguava': 1,
+            'freshpomegranate': 1,
+            'freshorange': 1,
+            'partiallyfreshapple': 5,  
+            'partiallyfreshbanana': 5,
+            'partiallyfreshguava': 5,
+            'partiallyfreshpomegranate': 6,
+            'partiallyfreshorange': 6,
+            'rottenapple': 8,  
+            'rottenbanana': 8,
+            'rottenguava': 9,
+            'rottenpomegranate': 9,
+            'rottenorange': 10
+        }
+        self.textract = boto3.client(
+                'textract',
+                aws_access_key_id=settings.ACCESS_KEY,
+                aws_secret_access_key=settings.SECRET_KEY,
+                region_name=settings.REGION,
+             )
+        self.brands = [
+                "WH Protective Oil", "Colgate", "LetsShave", "Nivea", "Garnier", "Dettol",
+                "Vaseline", "Himalaya", "Dabur", "Gillette", "Johnson & Johnson", "L'Oréal",
+                "Parachute", "Pepsodent", "Sunsilk", "Lifebuoy", "Ponds", "Clinic Plus",
+                "Head & Shoulders", "Oral-B", "Sensodyne", "Fair & Lovely", "Rexona",
+                "Cinthol", "Patanjali", "Godrej", "HUL (Hindustan Unilever)", "Emami",
+                "Boroplus", "Santoor", "ITC", "Park Avenue", "Fiama", "Old Spice", "Lux",
+                "Wild Stone", "Axe", "Yardley", "Nirma", "Surf Excel", "Ariel", "Tide",
+                "Rin", "Vim", "Medimix", "Nutralite sampriti ghee", "Pramix Food Jaggery Cube","SURYA NAMKEEN"
+        ]
+        self.model = load_model("backend/services/ml/finalpilotmodel.h5")
 
     def predict_image(self, image_path):
         print(image_path)
@@ -263,56 +263,7 @@ class ImageProcessor(BaseService):
         dates = self.extract_dates(combined_text)
         mfg_date, exp_date = self.compare_dates(dates)
 
-        brands = [
-            "WH Protective Oil",
-            "Colgate",
-            "LetsShave",
-            "Nivea",
-            "Garnier",
-            "Dettol",
-            "Vaseline",
-            "Himalaya",
-            "Dabur",
-            "Gillette",
-            "Johnson & Johnson",
-            "L'Oréal",
-            "Parachute",
-            "Pepsodent",
-            "Sunsilk",
-            "Lifebuoy",
-            "Ponds",
-            "Clinic Plus",
-            "Head & Shoulders",
-            "Oral-B",
-            "Sensodyne",
-            "Fair & Lovely",
-            "Rexona",
-            "Cinthol",
-            "Patanjali",
-            "Godrej",
-            "HUL (Hindustan Unilever)",
-            "Emami",
-            "Boroplus",
-            "Santoor",
-            "ITC",
-            "Park Avenue",
-            "Fiama",
-            "Old Spice",
-            "Lux",
-            "Wild Stone",
-            "Axe",
-            "Yardley",
-            "Nirma",
-            "Surf Excel",
-            "Ariel",
-            "Tide",
-            "Rin",
-            "Vim",
-            "Medimix",
-            "WH Protective Oil",
-            "Nutralite sampriti ghee",
-            "Pramix Food Jaggery Cube",
-        ]
+        brands = self.brands
 
         brand = self.find_brand_in_text(combined_text, brands)
 
@@ -327,3 +278,156 @@ class ImageProcessor(BaseService):
         }
 
         return response
+    
+
+    def extract_text(self,image_path):
+        with open(image_path, 'rb') as document:
+            document_bytes = document.read()
+
+        response = self.textract.analyze_document(
+            Document={'Bytes': document_bytes},
+            FeatureTypes=['LAYOUT']
+        )
+
+        text_output = [block['Text'] for block in response['Blocks'] if 'Text' in block]
+        return " ".join(text_output)   
+
+    def extract_details(self,text):
+        """
+        Extract MRP, Manufacturing Date, and Expiration Date from text using regex with OR patterns.
+        """
+        mrp_pattern = r"(?:M.R.P|MRP)\s*[:\-]?\s*([\d]+(?:\.\d+)?)|MRP\s*\.\s*(\d+)/"
+        mrp_match = re.search(mrp_pattern, text)
+        
+        if mrp_match:
+            mrp = mrp_match.group(1) if mrp_match.group(1) else mrp_match.group(2)
+        else:
+            mrp = None
+
+        print("Extracted MRP:", mrp)
+
+        mfg_date_pattern = r"(?:Mfg\. Date|Mfd)\s*[:\-]?\s*([A-Z]+-\d{4})"
+        mfg_date_match = re.search(mfg_date_pattern, text)
+        manufacturing_date = mfg_date_match.group(1) if mfg_date_match else None
+        print("Extracted Manufacturing Date:", manufacturing_date)
+
+        exp_date_pattern = r"(?:Exp\. Date|Exp Date)\s*[:\-]?\s*([A-Z]+-\d{4})"
+        exp_date_match = re.search(exp_date_pattern, text)
+        expiration_date = exp_date_match.group(1) if exp_date_match else None
+        print("Extracted Expiration Date:", expiration_date)
+
+        return mrp, manufacturing_date, expiration_date
+
+    def find_brand_in_text(self,text, brand_list):
+            # Loop through each brand name in the list
+            for brand in brand_list:
+                # Split the brand name into words
+                brand_words = brand.split()
+                # Check if any word from the brand is present in the text
+                for word in brand_words:
+                    # Use regex to find the word in the text (case insensitive)
+                    if re.search(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE):
+                        return brand  # Return the matched brand if any word is found
+            return "Brand not found"
+
+    def check_expiration(self, exp_date):
+        if not exp_date or exp_date == "NA":
+            return None
+        try:
+            expiry_date = datetime.strptime(exp_date, "%Y-%m-%d")
+            return datetime.now() > expiry_date
+        except ValueError:
+            return None
+
+    def calculate_expected_life_span(self, exp_date):
+        if not exp_date or exp_date == "NA":
+            return None
+        try:
+            expiry_date = datetime.strptime(exp_date, "%Y-%m-%d")
+            delta = expiry_date - datetime.now()
+            return max(0, delta.days)
+        except ValueError:
+            return None
+    def process_text(self):
+        combined_text = " ".join([self.extract_text(image_path) for image_path in self.image_paths])
+
+        print("Combined Text Extracted from All Images:")
+        print("------------------------------------")
+        print(combined_text)
+        print("------------------------------------")
+
+        mrp, mfg_date, exp_date = self.extract_details(combined_text)
+        brand = self.find_brand_in_text(combined_text,self.brands)
+
+        current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        parsed_data = {
+            "uuid": uuid.uuid4(),
+            "mrp": mrp,
+            "timestamp": datetime.now(),
+            "brand": brand,
+            "expiry_date": datetime.strptime(exp_date, "%Y-%m-%d") if exp_date else None,
+            "count": self.count,
+            "expired": self.check_expiration(exp_date),
+            "expected_life_span": self.calculate_expected_life_span(exp_date),
+        }
+
+        product_schema = PackagedProductSchema(**parsed_data)
+
+        print("Extracted Data as Schema:")
+        print(product_schema.model_dump_json(indent=2))
+        return product_schema
+
+
+    def calculate_shelf_life(self,predicted_label):
+        return self.shelf_life_map.get(predicted_label, None)
+
+    # Function to calculate the freshness score based on the fruit and freshness state
+    def calculate_freshness_score(self,predicted_label):
+        return self.freshness_score_map.get(predicted_label, None)
+
+    # Function to load the image and predict its class
+    def predict_image(self,model, image_path):
+        img = image.load_img(image_path, target_size=(224, 224))  
+        img_array = image.img_to_array(img)  
+        img_array = np.expand_dims(img_array, axis=0)  
+        img_array /= 255.0  
+
+        prediction = model.predict(img_array)  
+        predicted_class_index = np.argmax(prediction, axis=1)[0]  
+        predicted_label = self.class_mapping.get(predicted_class_index, None)
+        confidence = np.max(prediction) * 100  
+
+        return predicted_label, confidence
+
+    # Function to predict the best image from multiple images
+    def predict_best_image(self,model, image_paths):
+        best_label = None
+        highest_confidence = 0
+
+        for image_path in image_paths:
+            predicted_label, confidence = self.predict_image(model, image_path)
+            print(f"Image: {image_path}, Predicted Class: {predicted_label}, Confidence: {confidence:.2f}%")
+
+            if confidence > highest_confidence:
+                highest_confidence = confidence
+                best_label = predicted_label
+
+        if best_label:
+            shelf_life = self.calculate_shelf_life(best_label)
+            freshness_score = self.calculate_freshness_score(best_label)
+            print(f"\nBest Prediction: {best_label}")
+            print(f"Confidence: {highest_confidence:.2f}%")
+            print(f"Days Left (Shelf Life): {shelf_life} days")
+            print(f"Freshness Score: {freshness_score}")
+        else:
+            print("No valid predictions were made.")
+        response = {
+            "Predicted Class": best_label,
+            "Confidence": {highest_confidence},
+            "Shelf Life": shelf_life,
+            "Freshness Score": freshness_score,
+        }
+        return response
+    
+    def process(self,image_paths):
+        return self.predict_best_image(self.model, image_paths)

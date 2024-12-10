@@ -47,6 +47,7 @@ tensorflow-io-gcs-filesystem = "0.31.0"
 pytesseract = "^0.3.13"
 torch = "^2.4.1"
 pandas = "^2.2.3"
+boto3 = "^1.35.77"
 
 
 [tool.poetry.dev-dependencies]

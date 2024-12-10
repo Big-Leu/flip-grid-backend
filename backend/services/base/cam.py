@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import time
+from backend.schemas.product import FreshProduceSchema, PackagedProductSchema as PackagedProductSchema
 import uuid
 from fastapi import Depends
 from fastapi import WebSocket
@@ -68,7 +69,7 @@ class LiveFeed(BaseService):
 
                             print(f"Image saved: {image_filename}")
                             image_count += 1
-                    if image_count >= 20 and detected_class != prev:
+                    if image_count >= 3 and detected_class != prev:
                         image_count = 0
                         prev = detected_class
                         print(detected_class, prev, ":---------------bigleu was here")
@@ -88,39 +89,35 @@ class LiveFeed(BaseService):
                 return True
         return False
 
-    async def process_somethings(self, db, video_path: list[str]):
+    async def process_somethings(self, db, video_path: list[str],count:int):
         try:
             flag = self.process(video_path)
             service = FormService(db)
             if not flag:
-                MLOCR = ImageProcessor(
-                    r"C:/Program Files/Tesseract-OCR/tesseract.exe", video_path
-                ).process_images()
-                if any(
-                    key in MLOCR and MLOCR[key]
-                    for key in ["name", "expiry_date", "mrp"]
-                ):
+                PackagedProductSchema = ImageProcessor(
+                    r"C:/Program Files/Tesseract-OCR/tesseract.exe", video_path, count
+                ).process_text()
+                if PackagedProductSchema:
                     print("Required fields are present, proceed further.")
                     obj = ProductSchema(
-                        name=MLOCR["name"],
-                        expiry_date=MLOCR["expiry_date"],
-                        manufacturing_date=MLOCR.get("manufacturing_date"),
-                        mrp=MLOCR["mrp"],
+                        name=PackagedProductSchema.brand,
+                        expiry_date=PackagedProductSchema.expiry_date,
+                        mrp=PackagedProductSchema.mrp,
                         description="A PACKAGED PRODUCT",
                     )
-                    await service.createProductListing(obj)
+                    await service.createProductListing(PackagedProductSchema)
                 return self.response(
                     ServiceResponseStatus.FETCHED,
-                    result=[ProductSchema2.from_sqlalchemy(obj)],
+                    result=[obj],
                 )
             else:
                 MLFRESH = ImageProcessor(
-                    r"C:/Program Files/Tesseract-OCR/tesseract.exe", video_path
-                ).predict_best_image(video_path)
+                    r"C:/Program Files/Tesseract-OCR/tesseract.exe", video_path, count
+                ).process(video_path)
                 print(MLFRESH)
                 obj = ProductSchema(
                     freshStatus=MLFRESH["Predicted Class"],
-                    expiry_date="1 WEEK",
+                    expiry_date=str(MLFRESH["Shelf Life"]),
                     description="FRUITS OR VEGETABLE",
                     confidence=str(
                         list(MLFRESH["Confidence"])[0]
@@ -128,8 +125,13 @@ class LiveFeed(BaseService):
                         else MLFRESH["Confidence"]
                     ),
                 )
-                if "rotten" not in MLFRESH["Predicted Class"].lower():
-                    await service.createProductListing(obj)
+                obj2 = FreshProduceSchema(
+                    produce=MLFRESH["Predicted Class"],
+                    freshness=(10-MLFRESH["Freshness Score"]),
+                    expected_life_span=MLFRESH["Shelf Life"],
+                )
+                print(obj2)
+                await service.createProductListingFresh(obj2)
                 return self.response(
                     ServiceResponseStatus.FETCHED,
                     result=[ProductSchema2.from_sqlalchemy(obj)],

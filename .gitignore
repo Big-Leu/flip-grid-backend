@@ -147,3 +147,4 @@ config.yml
 /backend/db/migrations
 /backend/services/video
 /backend/services/ml/freshnessmodel.h5
+/backend/services/ml/finalpilotmodel.h5
