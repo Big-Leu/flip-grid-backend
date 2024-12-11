@@ -5,7 +5,6 @@ from datetime import datetime
 from backend.db.models.product import Product
 
 
-
 class FreshProduceSchema(BaseModel):
     uuid: Optional[UUID] = None
     sl_no: Optional[int] = None
@@ -20,6 +19,7 @@ class FreshProduceSchema(BaseModel):
     @classmethod
     def from_sqlalchemy(cls, model) -> "FreshProduceSchema":
         return cls.model_validate(model)
+
 
 class PackagedProductSchema(BaseModel):
     uuid: Optional[UUID] = None
@@ -37,7 +37,8 @@ class PackagedProductSchema(BaseModel):
     @classmethod
     def from_sqlalchemy(cls, model) -> "PackagedProductSchema":
         return cls.model_validate(model)
-    
+
+
 class ProductSchema(BaseModel):
     name: Optional[str] = None
     expiry_date: Optional[str] = None

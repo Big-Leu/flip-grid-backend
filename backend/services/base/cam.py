@@ -2,7 +2,10 @@ import base64
 import json
 import os
 import time
-from backend.schemas.product import FreshProduceSchema, PackagedProductSchema as PackagedProductSchema
+from backend.schemas.product import (
+    FreshProduceSchema,
+    PackagedProductSchema as PackagedProductSchema,
+)
 import uuid
 from fastapi import Depends
 from fastapi import WebSocket
@@ -89,7 +92,7 @@ class LiveFeed(BaseService):
                 return True
         return False
 
-    async def process_somethings(self, db, video_path: list[str],count:int):
+    async def process_somethings(self, db, video_path: list[str], count: int):
         try:
             flag = self.process(video_path)
             service = FormService(db)
@@ -127,7 +130,7 @@ class LiveFeed(BaseService):
                 )
                 obj2 = FreshProduceSchema(
                     produce=MLFRESH["Predicted Class"],
-                    freshness=(10-MLFRESH["Freshness Score"]),
+                    freshness=(10 - MLFRESH["Freshness Score"]),
                     expected_life_span=MLFRESH["Shelf Life"],
                 )
                 print(obj2)

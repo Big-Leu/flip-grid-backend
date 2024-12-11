@@ -28,7 +28,7 @@ async def list_processes(
     db: AsyncSession = Depends(get_db_session),
 ) -> ServiceResponse:
     manager = LiveFeed()
-    result = await manager.process_somethings(db, path,count)
+    result = await manager.process_somethings(db, path, count)
     return result
 
 

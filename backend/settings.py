@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     FAILED_LOGIN_ROUTE: str = cfg.get("FAILED_LOGIN_ROUTE")
     cookie_domain: str = cfg.get("cookie_domain")
     ACCESS_KEY: str = cfg.get("ACCESS_KEY")
-    SECRET_KEY:str = cfg.get("SECRET_KEY")
+    SECRET_KEY: str = cfg.get("SECRET_KEY")
     REGION: str = cfg.get("REGION")
     host: str = cfg.get("host")
     port: int = cfg.get("port")
