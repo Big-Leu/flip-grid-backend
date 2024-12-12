@@ -23,7 +23,7 @@ def get_app() -> FastAPI:
     :return: application.
     """
     app = FastAPI(
-        title="rentalbackend",
+        title="FlipGrid",
         version=metadata.version("backend"),
         docs_url=None,
         redoc_url=None,
