@@ -24,7 +24,7 @@ class PackagedProduct(Base):
     mrp = Column(String, nullable=True)
     timestamp = Column(DateTime, nullable=True)
     brand = Column(String, nullable=True)
-    expiry_date = Column(DateTime, nullable=True)
+    expiry_date = Column(String, nullable=True)
     count = Column(Integer, nullable=True)
     expired = Column(Boolean, nullable=True)
     expected_life_span = Column(Integer, nullable=True)

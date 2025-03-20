@@ -77,6 +77,8 @@ class FormService(BaseService):
             Product1.uuid = uuid.uuid4()
             result = await self.session.execute(select(func.max(FreshProduce.sl_no)))
             counter2 = result.scalar()
+            if counter2 is None:
+                counter2 = 0
             Product1.sl_no = counter2 + 1
             data = Product1.model_dump()
             plan = FreshProduce(**data)

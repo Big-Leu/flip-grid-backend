@@ -129,6 +129,7 @@ class ImageProcessor(BaseService):
             "Pramix Food Jaggery Cube",
             "SURYA NAMKEEN",
             "Goodknight",
+            "Shudh Ghee"
         ]
         self.model = load_model("backend/services/ml/finalpilotmodel.h5")
 
@@ -441,7 +442,7 @@ class ImageProcessor(BaseService):
                 else closest_brand
             )
 
-        return None
+        return "BRAND NOT FOUND"
 
     def compare_dates(self, date1, date2):
         """
@@ -462,24 +463,21 @@ class ImageProcessor(BaseService):
         else:
             return (date2, date1)
 
-    def check_expiration(self, exp_date):
-        if not exp_date or exp_date == "NA":
-            return None
-        try:
-            expiry_date = datetime.strptime(exp_date, "%Y-%m-%d")
-            return datetime.now() > expiry_date
-        except ValueError:
-            return None
+    def check_expiration(self,expiration_date_list):
+        if expiration_date_list:
+            # Filter out any None values and check expiration
+            expiration_dates = [datetime.strptime(date, "%d.%m.%y") for date in expiration_date_list if date]
+            return any(date < datetime.now() for date in expiration_dates)
+        return False
 
-    def calculate_expected_life_span(self, exp_date):
-        if not exp_date or exp_date == "NA":
-            return None
-        try:
-            expiry_date = datetime.strptime(exp_date, "%Y-%m-%d")
-            delta = expiry_date - datetime.now()
-            return max(0, delta.days)
-        except ValueError:
-            return None
+    def calculate_expected_life_span(self,expiration_date_list):
+        if expiration_date_list:
+            # Filter out any None values and parse dates
+            expiration_dates = [datetime.strptime(date, "%d.%m.%y") for date in expiration_date_list if date]
+            # Calculate remaining days for future dates only
+            remaining_days = [(date - datetime.now()).days for date in expiration_dates if date > datetime.now()]
+            return min(remaining_days) if remaining_days else 0  # Return the smallest positive remaining days
+        return 0
 
     def process_text(self):
         combined_text = " ".join(
@@ -492,26 +490,41 @@ class ImageProcessor(BaseService):
         print("------------------------------------")
 
         mrp, mfg_date, exp_date = self.extract_details(combined_text)
+        print("extracted details", mrp, mfg_date, exp_date)
+        
         brand = self.extract_brand(combined_text)
+        
+        # Safely extract expiry_date
+        expiry_date = None
+        if exp_date and len(exp_date) > 0:
+            try:
+                expiry_date = datetime.strptime(str(exp_date[0]), "%d.%m.%y")
+            except ValueError as e:
+                print("Error parsing expiry date:", e)
+        print("Extracted Brand:", brand)
+        print("Extracted MRP:", mrp)
+        print("Extracted Manufacturing Date:", mfg_date)
+        print("Extracted Expiry Date:", expiry_date)
+        print("check_product_expiration:", self.check_expiration(exp_date))
+        print("calculate_expected_life_span:", self.calculate_expected_life_span(exp_date))
+        expiry_date_str = str(exp_date[0]) if exp_date and len(exp_date) > 0 and exp_date[0] not in [None, "None"] else "nope"
         parsed_data = {
             "uuid": uuid.uuid4(),
             "mrp": mrp,
             "timestamp": datetime.now(),
             "brand": brand,
-            "expiry_date": (
-                datetime.strptime(exp_date, "%Y-%m-%d") if exp_date else None
-            ),
+            "expiry_date": expiry_date_str,
             "count": self.count,
             "expired": self.check_expiration(exp_date),
             "expected_life_span": self.calculate_expected_life_span(exp_date),
         }
-
+        print(parsed_data)
         product_schema = PackagedProductSchema(**parsed_data)
 
         print("Extracted Data as Schema:")
         print(product_schema.model_dump_json(indent=2))
         return product_schema
-
+    
     def calculate_shelf_life(self, predicted_label):
         return self.shelf_life_map.get(predicted_label, None)
 
